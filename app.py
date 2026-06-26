@@ -6,6 +6,7 @@ import zipfile
 import pandas as pd
 from datetime import datetime
 import time
+from zoneinfo import ZoneInfo
 
 # --- Configuration & GraphQL Queries ---
 API_URL = "https://api.fireflies.ai/graphql"
@@ -51,10 +52,22 @@ if "meetings_df" not in st.session_state:
 if "editor_key" not in st.session_state:
     st.session_state.editor_key = 0
 
-# --- Sidebar: Authentication ---
+# --- Sidebar: Authentication & Settings ---
 with st.sidebar:
     st.header("🔑 Authentication")
     token = st.text_input("Fireflies API Token:", type="password", help="Get this from your Fireflies integrations dashboard.")
+    
+    st.header("⚙️ Settings")
+    # A list of common timezones, defaulting to Madrid so it works perfectly for you out of the box
+    common_timezones = [
+        "Europe/Warsaw", 
+        "Europe/Madrid", 
+        "Europe/London", 
+        "Europe/Paris", 
+        "America/New_York", 
+        "America/Los_Angeles"
+    ]
+    selected_tz = st.selectbox("Display Timezone:", common_timezones, index=0)
     
     if st.button("Fetch Available Recordings", type="primary"):
         if not token:
@@ -76,22 +89,26 @@ with st.sidebar:
                     if not all_transcripts:
                         st.warning("No recordings found in this account.")
                     else:
-                        # CRITICAL: Force reverse chronological order (Newest first)
+                        # Force reverse chronological order (Newest first)
                         all_transcripts.sort(key=lambda x: x.get("dateString") or "", reverse=True)
+                        
+                        # Target specific timezone object
+                        tz_target = ZoneInfo(selected_tz)
                         
                         # Process into a clean DataFrame
                         data = []
                         for t in all_transcripts:
                             try:
-                                timestamp = datetime.fromisoformat(t.get("dateString")).astimezone()
+                                # Convert the ISO string directly into the user's chosen timezone
+                                timestamp = datetime.fromisoformat(t.get("dateString")).astimezone(tz_target)
                                 date_str = timestamp.strftime("%Y-%m-%d %H:%M")
                             except:
                                 date_str = "Unknown Date"
                                 
                             data.append({
                                 "Select": False,
-                                "Time": date_str,      # Clear Column Naming
-                                "Subject": t.get("title") or "Untitled Meeting", # Clear Column Naming
+                                "Time": date_str,      
+                                "Subject": t.get("title") or "Untitled Meeting", 
                                 "ID": t["id"]
                             })
                         
@@ -117,14 +134,14 @@ if st.session_state.meetings_df is not None:
             st.session_state.editor_key += 1
             st.hybrid_rerun() if hasattr(st, "hybrid_rerun") else st.rerun()
 
-    # Interactive Table (Shows Select, Time, Subject - hides internal ID)
+    # Interactive Table
     edited_df = st.data_editor(
         st.session_state.meetings_df,
         key=f"editor_{st.session_state.editor_key}",
         disabled=["Time", "Subject", "ID"],
         hide_index=True,
         use_container_width=True,
-        column_config={"ID": None} # This completely hides the ID column from visual clutter
+        column_config={"ID": None} # Hides internal ID
     )
     
     st.session_state.meetings_df["Select"] = edited_df["Select"]
@@ -143,6 +160,7 @@ if st.session_state.meetings_df is not None:
                 for idx, (_, row) in enumerate(selected_rows.iterrows()):
                     tid = row["ID"]
                     title = clean(row["Subject"])
+                    # Because row["Time"] is now in Madrid time, the filename matches!
                     date_clean = row["Time"].replace(":", "")
                     
                     status_text.text(f"Fetching ({idx+1}/{len(selected_rows)}): {title}")
