@@ -43,7 +43,7 @@ def clean(name: str) -> str:
 
 # --- Streamlit UI Setup ---
 st.set_page_config(page_title="Fireflies Downloader", page_icon="🪰", layout="wide")
-st.title("Fireflies.ai Custom Bulk Downloader")
+st.title("🪰 Fireflies.ai Custom Bulk Downloader")
 st.write("Paste your API token, select exactly which meetings you want, and download them all as a single ZIP file.")
 
 # Initialize session states
@@ -58,7 +58,6 @@ with st.sidebar:
     token = st.text_input("Fireflies API Token:", type="password", help="Get this from your Fireflies integrations dashboard.")
     
     st.header("⚙️ Settings")
-    # A list of common timezones, defaulting to Madrid so it works perfectly for you out of the box
     common_timezones = [
         "Europe/Warsaw", 
         "Europe/Madrid", 
@@ -92,14 +91,12 @@ with st.sidebar:
                         # Force reverse chronological order (Newest first)
                         all_transcripts.sort(key=lambda x: x.get("dateString") or "", reverse=True)
                         
-                        # Target specific timezone object
                         tz_target = ZoneInfo(selected_tz)
                         
                         # Process into a clean DataFrame
                         data = []
                         for t in all_transcripts:
                             try:
-                                # Convert the ISO string directly into the user's chosen timezone
                                 timestamp = datetime.fromisoformat(t.get("dateString")).astimezone(tz_target)
                                 date_str = timestamp.strftime("%Y-%m-%d %H:%M")
                             except:
@@ -113,7 +110,7 @@ with st.sidebar:
                             })
                         
                         st.session_state.meetings_df = pd.DataFrame(data)
-                        st.session_state.editor_key += 1 # Reset editor view
+                        st.session_state.editor_key += 1 # Reset editor view to base template
                         st.success(f"Found {len(data)} recordings!")
                 except Exception as e:
                     st.error(f"Failed to fetch: {str(e)}")
@@ -127,12 +124,12 @@ if st.session_state.meetings_df is not None:
         if st.button("Select All", use_container_width=True):
             st.session_state.meetings_df["Select"] = True
             st.session_state.editor_key += 1
-            st.hybrid_rerun() if hasattr(st, "hybrid_rerun") else st.rerun()
+            st.rerun()
     with col2:
         if st.button("Deselect All", use_container_width=True):
             st.session_state.meetings_df["Select"] = False
             st.session_state.editor_key += 1
-            st.hybrid_rerun() if hasattr(st, "hybrid_rerun") else st.rerun()
+            st.rerun()
 
     # Interactive Table
     edited_df = st.data_editor(
@@ -141,10 +138,11 @@ if st.session_state.meetings_df is not None:
         disabled=["Time", "Subject", "ID"],
         hide_index=True,
         use_container_width=True,
-        column_config={"ID": None} # Hides internal ID
+        column_config={"ID": None} 
     )
     
-    st.session_state.meetings_df["Select"] = edited_df["Select"]
+    # CRITICAL FIX: We read selections directly from edited_df output,
+    # rather than overwriting st.session_state.meetings_df during the active click.
     selected_rows = edited_df[edited_df["Select"] == True]
     st.write(f"**Selected:** {len(selected_rows)} of {len(edited_df)} meetings")
 
@@ -160,7 +158,6 @@ if st.session_state.meetings_df is not None:
                 for idx, (_, row) in enumerate(selected_rows.iterrows()):
                     tid = row["ID"]
                     title = clean(row["Subject"])
-                    # Because row["Time"] is now in Madrid time, the filename matches!
                     date_clean = row["Time"].replace(":", "")
                     
                     status_text.text(f"Fetching ({idx+1}/{len(selected_rows)}): {title}")
